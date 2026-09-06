@@ -1,0 +1,22 @@
+# Netlify build configuration for S.M.V Coaching Zone.
+#
+# This file exists so Netlify's build command and Node version are
+# explicit rather than auto-detected — auto-detection can sometimes run
+# `next build` directly instead of the project's own `npm run build`
+# script, which would skip the `prisma generate` step defined there and
+# leave @prisma/client without generated types (implicit `any` errors
+# on every Prisma query result).
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Required Netlify plugin for Next.js App Router (SSR/ISR, image
+# optimization, middleware, etc). Netlify's Next Runtime normally adds
+# this automatically for auto-detected Next.js sites, but declaring it
+# explicitly avoids relying on that detection.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
