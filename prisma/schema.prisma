@@ -1,0 +1,759 @@
+// ============================================================================
+// S.M.V Coaching Zone — Prisma Schema
+//
+// This schema is organized into sections:
+//   1. Auth & People (User, Student/Teacher profiles, Guardian scaffold)
+//   2. Academics (Course, Subject, Batch, Enrollment)
+//   3. Admission
+//   4. Notices & Routine
+//   5. Attendance
+//   6. Exams & Results (basic, V1)
+//   7. Fees & Payments
+//   8. Study Materials
+//   9. Public content (Gallery, Achievements, Testimonials, Contact)
+//  10. Site settings (key/value CMS-style store for editable website content)
+//  11. Notifications (scaffold — model ready, UI/dispatch to be added later)
+//  12. Question Bank & Online Exam (scaffold — schema ready for a future
+//      module; NOT wired into any UI/API in this version. See README.)
+//
+// Bilingual fields use the `Bn` / `En` suffix convention (e.g. nameBn/nameEn)
+// as required by the project spec, wherever public-facing bilingual content
+// is stored.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// 1. AUTH & PEOPLE
+// ----------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+  GUARDIAN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role     @default(STUDENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentProfile  StudentProfile?
+  teacherProfile  TeacherProfile?
+  guardianProfile GuardianProfile?
+
+  createdNotices        Notice[]         @relation("NoticeCreatedBy")
+  createdStudyMaterials StudyMaterial[]  @relation("MaterialUploadedBy")
+  reviewedAdmissions    Admission[]      @relation("AdmissionReviewedBy")
+  recordedPayments      Payment[]        @relation("PaymentRecordedBy")
+  notifications         Notification[]
+  passwordResetTokens   PasswordResetToken[]
+
+  @@index([role])
+}
+
+// Secure password-reset architecture (token issuance only; actual email/SMS
+// delivery requires a provider — see README "External services required").
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+}
+
+model StudentProfile {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  studentCode   String        @unique // e.g. SMV-2026-00001, auto-generated
+  nameBn        String?
+  fatherName    String
+  motherName    String
+  dob           DateTime
+  gender        Gender
+  address       String
+  institution   String?
+  photoUrl      String?
+  admissionDate DateTime      @default(now())
+  status        StudentStatus @default(ACTIVE)
+
+  courseId String?
+  batchId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id])
+  batch  Batch?  @relation(fields: [batchId], references: [id])
+
+  enrollments      Enrollment[]
+  attendanceRecord AttendanceRecord[]
+  resultEntries    ResultEntry[]
+  feeInvoices      FeeInvoice[]
+  guardianLinks    StudentGuardian[]
+  admissionSource  Admission?         @relation("AdmissionConvertedTo")
+
+  @@index([courseId])
+  @@index([batchId])
+}
+
+model TeacherProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  nameBn                String?
+  photoUrl              String?
+  qualification         String?
+  experienceYears       Int?
+  subjectSpecialization String?
+  bio                   String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  coursesTeaching  Course[]
+  batchesTeaching  Batch[]
+  courseSubjects   CourseSubject[]
+  routines         Routine[]
+  createdExams     Exam[]
+  attendanceMarked AttendanceSession[] @relation("AttendanceMarkedBy")
+
+  @@index([isActive])
+}
+
+// Guardian/Parent accounts — schema scaffold for a future module.
+// Not yet exposed via any dashboard or API route in this version.
+model GuardianProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  relation  String?
+  createdAt DateTime @default(now())
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students StudentGuardian[]
+}
+
+model StudentGuardian {
+  id         String @id @default(cuid())
+  studentId  String
+  guardianId String
+
+  student  StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian GuardianProfile @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, guardianId])
+}
+
+// ----------------------------------------------------------------------------
+// 2. ACADEMICS
+// ----------------------------------------------------------------------------
+
+model Subject {
+  id        String   @id @default(cuid())
+  nameBn    String
+  nameEn    String
+  code      String?  @unique
+  createdAt DateTime @default(now())
+
+  courseLinks     CourseSubject[]
+  routines        Routine[]
+  studyMaterials  StudyMaterial[]
+  exams           Exam[]
+  attendanceSlots AttendanceSession[]
+  questions       Question[]
+}
+
+model Course {
+  id               String    @id @default(cuid())
+  nameBn           String
+  nameEn           String
+  descriptionBn    String?
+  descriptionEn    String?
+  classGrade       String?
+  imageUrl         String?
+  primaryTeacherId String?
+  durationText     String?
+  monthlyFee       Decimal   @db.Decimal(10, 2)
+  admissionFee     Decimal   @db.Decimal(10, 2) @default(0)
+  seatLimit        Int?
+  startDate        DateTime?
+  endDate          DateTime?
+  scheduleText     String?
+  published        Boolean   @default(false)
+  featured         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  primaryTeacher TeacherProfile? @relation(fields: [primaryTeacherId], references: [id])
+
+  batches        Batch[]
+  subjectLinks   CourseSubject[]
+  students       StudentProfile[]
+  enrollments    Enrollment[]
+  admissions     Admission[]
+  routines       Routine[]
+  studyMaterials StudyMaterial[]
+  exams          Exam[]
+  feeInvoices    FeeInvoice[]
+  testimonials   Testimonial[]
+
+  @@index([published])
+  @@index([featured])
+}
+
+model CourseSubject {
+  id        String  @id @default(cuid())
+  courseId  String
+  subjectId String
+  teacherId String?
+
+  course  Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile? @relation(fields: [teacherId], references: [id])
+
+  @@unique([courseId, subjectId])
+}
+
+enum BatchStatus {
+  ACTIVE
+  INACTIVE
+  COMPLETED
+}
+
+model Batch {
+  id            String      @id @default(cuid())
+  name          String
+  courseId      String
+  teacherId     String?
+  room          String?
+  maxStudents   Int?
+  startTime     String? // stored as "HH:mm" text for simplicity/display
+  endTime       String?
+  daysText      String? // e.g. "Sat, Mon, Wed"
+  status        BatchStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  course  Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile? @relation(fields: [teacherId], references: [id])
+
+  students         StudentProfile[]
+  enrollments      Enrollment[]
+  routines         Routine[]
+  admissions       Admission[]
+  studyMaterials   StudyMaterial[]
+  exams            Exam[]
+  attendanceSlots  AttendanceSession[]
+  feeInvoices      FeeInvoice[]
+
+  @@index([courseId])
+  @@index([status])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+model Enrollment {
+  id         String           @id @default(cuid())
+  studentId  String
+  courseId   String
+  batchId    String
+  enrolledAt DateTime         @default(now())
+  status     EnrollmentStatus @default(ACTIVE)
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id])
+  batch   Batch          @relation(fields: [batchId], references: [id])
+
+  @@unique([studentId, batchId])
+}
+
+// ----------------------------------------------------------------------------
+// 3. ADMISSION
+// ----------------------------------------------------------------------------
+
+enum AdmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Admission {
+  id                 String          @id @default(cuid())
+  applicantNameEn    String
+  applicantNameBn    String?
+  fatherName         String
+  motherName         String
+  dob                DateTime
+  gender             Gender
+  phone              String
+  email              String?
+  address            String
+  institution        String?
+  targetClass        String
+  courseId           String?
+  batchPreferenceId  String?
+  photoUrl           String?
+  previousResultUrl  String?
+  additionalInfo     String?
+  status             AdmissionStatus @default(PENDING)
+  reviewedById       String?
+  reviewNote         String?
+  convertedStudentId String?         @unique
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  course          Course?         @relation(fields: [courseId], references: [id])
+  batchPreference Batch?          @relation(fields: [batchPreferenceId], references: [id])
+  reviewedBy      User?           @relation("AdmissionReviewedBy", fields: [reviewedById], references: [id])
+  convertedStudent StudentProfile? @relation("AdmissionConvertedTo", fields: [convertedStudentId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ----------------------------------------------------------------------------
+// 4. NOTICES & ROUTINE
+// ----------------------------------------------------------------------------
+
+enum NoticePriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Notice {
+  id             String         @id @default(cuid())
+  titleBn        String
+  titleEn        String
+  bodyBn         String?
+  bodyEn         String?
+  category       String?
+  attachmentUrl  String?
+  priority       NoticePriority @default(MEDIUM)
+  published      Boolean        @default(false)
+  pinned         Boolean        @default(false)
+  publishDate    DateTime       @default(now())
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  createdBy User? @relation("NoticeCreatedBy", fields: [createdById], references: [id])
+
+  @@index([published, pinned, publishDate])
+}
+
+enum WeekDay {
+  SATURDAY
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
+model Routine {
+  id        String   @id @default(cuid())
+  day       WeekDay
+  startTime String
+  endTime   String
+  courseId  String
+  subjectId String?
+  teacherId String?
+  batchId   String
+  room      String?
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course  Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject Subject?        @relation(fields: [subjectId], references: [id])
+  teacher TeacherProfile? @relation(fields: [teacherId], references: [id])
+  batch   Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([teacherId])
+  @@index([day])
+}
+
+// ----------------------------------------------------------------------------
+// 5. ATTENDANCE
+// ----------------------------------------------------------------------------
+
+model AttendanceSession {
+  id           String   @id @default(cuid())
+  date         DateTime
+  courseId     String
+  batchId      String
+  subjectId    String?
+  markedById   String?
+  createdAt    DateTime @default(now())
+
+  course    Course          @relation(fields: [courseId], references: [id])
+  batch     Batch           @relation(fields: [batchId], references: [id])
+  subject   Subject?        @relation(fields: [subjectId], references: [id])
+  markedBy  TeacherProfile? @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+
+  records AttendanceRecord[]
+
+  @@unique([date, batchId, subjectId])
+  @@index([batchId, date])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  sessionId String
+  studentId String
+  status    AttendanceStatus
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+}
+
+// ----------------------------------------------------------------------------
+// 6. EXAMS & RESULTS (basic, V1)
+// ----------------------------------------------------------------------------
+
+model Exam {
+  id         String   @id @default(cuid())
+  titleBn    String
+  titleEn    String
+  courseId   String
+  batchId    String
+  subjectId  String
+  examDate   DateTime
+  fullMarks  Decimal  @db.Decimal(6, 2)
+  passMarks  Decimal  @db.Decimal(6, 2)
+  published  Boolean  @default(false)
+  createdById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  course  Course          @relation(fields: [courseId], references: [id])
+  batch   Batch           @relation(fields: [batchId], references: [id])
+  subject Subject         @relation(fields: [subjectId], references: [id])
+  createdBy TeacherProfile? @relation(fields: [createdById], references: [id])
+
+  resultEntries ResultEntry[]
+
+  @@index([batchId])
+  @@index([published])
+}
+
+model ResultEntry {
+  id             String   @id @default(cuid())
+  examId         String
+  studentId      String
+  marksObtained  Decimal? @db.Decimal(6, 2)
+  isAbsent       Boolean  @default(false)
+  grade          String?
+  gpa            Decimal? @db.Decimal(3, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  exam    Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@index([studentId])
+}
+
+// ----------------------------------------------------------------------------
+// 7. FEES & PAYMENTS
+// ----------------------------------------------------------------------------
+
+enum FeeType {
+  ADMISSION
+  MONTHLY
+  OTHER
+}
+
+enum FeeStatus {
+  PAID
+  PARTIAL
+  DUE
+}
+
+model FeeInvoice {
+  id          String    @id @default(cuid())
+  studentId   String
+  courseId    String?
+  batchId     String?
+  feeType     FeeType
+  periodLabel String? // e.g. "January 2026" for monthly fees
+  amount      Decimal   @db.Decimal(10, 2)
+  paidAmount  Decimal   @db.Decimal(10, 2) @default(0)
+  dueAmount   Decimal   @db.Decimal(10, 2)
+  status      FeeStatus @default(DUE)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course?        @relation(fields: [courseId], references: [id])
+  batch   Batch?         @relation(fields: [batchId], references: [id])
+  payments Payment[]
+
+  @@index([studentId])
+  @@index([status])
+}
+
+enum PaymentMethod {
+  CASH
+  BKASH
+  NAGAD
+  BANK
+  OTHER
+}
+
+// NOTE: This records payments manually entered by Admin/staff (e.g. cash
+// collected at the desk, or a bKash/Nagad transaction confirmed by the
+// student out-of-band). It does NOT integrate with a live payment gateway.
+// Real bKash/Nagad API integration requires merchant credentials and a
+// dedicated gateway callback route — see README "External services required".
+model Payment {
+  id            String        @id @default(cuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod
+  referenceNo   String?
+  paidAt        DateTime      @default(now())
+  recordedById  String?
+  createdAt     DateTime      @default(now())
+
+  invoice    FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  recordedBy User?      @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([invoiceId])
+}
+
+// ----------------------------------------------------------------------------
+// 8. STUDY MATERIALS
+// ----------------------------------------------------------------------------
+
+enum MaterialType {
+  PDF
+  DOCUMENT
+  IMAGE
+  VIDEO_LINK
+  NOTE
+}
+
+model StudyMaterial {
+  id           String       @id @default(cuid())
+  titleBn      String
+  titleEn      String
+  type         MaterialType
+  fileUrl      String?
+  externalUrl  String?
+  courseId     String?
+  subjectId    String?
+  batchId      String?
+  uploadedById String?
+  published    Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  course     Course?  @relation(fields: [courseId], references: [id])
+  subject    Subject? @relation(fields: [subjectId], references: [id])
+  batch      Batch?   @relation(fields: [batchId], references: [id])
+  uploadedBy User?    @relation("MaterialUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([courseId])
+  @@index([batchId])
+}
+
+// ----------------------------------------------------------------------------
+// 9. PUBLIC CONTENT
+// ----------------------------------------------------------------------------
+
+model GalleryAlbum {
+  id        String   @id @default(cuid())
+  titleBn   String
+  titleEn   String
+  category  String
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  images GalleryImage[]
+}
+
+model GalleryImage {
+  id        String   @id @default(cuid())
+  albumId   String
+  imageUrl  String
+  caption   String?
+  createdAt DateTime @default(now())
+
+  album GalleryAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@index([albumId])
+}
+
+model Achievement {
+  id           String   @id @default(cuid())
+  studentName  String
+  photoUrl     String?
+  courseOrClass String?
+  examName     String?
+  resultText   String?
+  description  String?
+  published    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  photoUrl  String?
+  message   String
+  courseId  String?
+  rating    Int      @default(5)
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  course Course? @relation(fields: [courseId], references: [id])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  subject   String?
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ----------------------------------------------------------------------------
+// 10. SITE SETTINGS (CMS-style key/value store)
+// ----------------------------------------------------------------------------
+
+// A flexible key/value settings table lets Admin edit almost any website
+// content (hero text, about content, contact info, social links, SEO
+// defaults, feature flags like admissionOpen) without a schema migration
+// for every new field. Each `key` holds a JSON blob. See src/lib/settings.ts
+// for the typed accessors and default values.
+model SiteSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ----------------------------------------------------------------------------
+// 11. NOTIFICATIONS (scaffold)
+// ----------------------------------------------------------------------------
+
+// In-app notification model. Creation API + a basic "bell" list is wired up
+// in this version. Push notifications (web push / mobile) require VAPID or
+// FCM credentials and are NOT implemented yet — see README.
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  titleBn   String
+  titleEn   String
+  bodyBn    String?
+  bodyEn    String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+// ----------------------------------------------------------------------------
+// 12. QUESTION BANK & ONLINE EXAM (schema scaffold for a future module)
+// ----------------------------------------------------------------------------
+// These models exist so a future "Online Examination" / "Question Bank"
+// module can be added without an architecture change. There is deliberately
+// NO API route, dashboard page, or business logic built on top of these
+// models in this version — building a UI now would risk exactly the kind
+// of half-working, fake-looking feature this project's spec explicitly
+// warns against (section 24 / section 46).
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT
+}
+
+model Question {
+  id           String             @id @default(cuid())
+  subjectId    String
+  chapter      String?
+  difficulty   QuestionDifficulty @default(MEDIUM)
+  type         QuestionType       @default(MCQ)
+  questionBn   String?
+  questionEn   String
+  explanation  String?
+  marks        Decimal            @db.Decimal(4, 2) @default(1)
+  createdAt    DateTime           @default(now())
+
+  subject Subject          @relation(fields: [subjectId], references: [id])
+  options QuestionOption[]
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  textBn     String?
+  textEn     String
+  isCorrect  Boolean @default(false)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
