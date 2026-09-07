@@ -76,7 +76,7 @@ export default async function StudentDashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Today's Classes</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Today&apos;s Classes</h2>
           {todayRoutine.length === 0 ? (
             <p className="text-sm text-slate-400">No classes scheduled today.</p>
           ) : (
@@ -113,8 +113,7 @@ export default async function StudentDashboardPage() {
           </Link>
         </Card>
 
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Upcoming Exams</h2>
+        <CaClasses       <h2 className="mb-3 text-sm font-semibold text-slate-900">Upcoming Exams</h2>
           {upcomingExams.length === 0 ? (
             <p className="text-sm text-slate-400">No upcoming exams.</p>
           ) : (
