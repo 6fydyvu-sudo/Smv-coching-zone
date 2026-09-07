@@ -228,6 +228,7 @@ model Course {
   routines       Routine[]
   studyMaterials StudyMaterial[]
   exams          Exam[]
+attendanceSessions AttendanceSession[]
   feeInvoices    FeeInvoice[]
   testimonials   Testimonial[]
 
