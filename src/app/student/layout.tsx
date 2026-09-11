@@ -43,4 +43,4 @@ export default async function StudentLayout({ children }: { children: ReactNode 
       {children}
     </DashboardShell>
   );
-   }
+      }
