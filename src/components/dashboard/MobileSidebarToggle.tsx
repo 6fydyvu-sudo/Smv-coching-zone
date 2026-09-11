@@ -1,8 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
+
+function setOpen(open: boolean) {
+  document.getElementById("dashboard-sidebar")?.classList.toggle("-translate-x-full", !open);
+  document.getElementById("dashboard-backdrop")?.classList.toggle("hidden", !open);
+}
+
 export function MobileSidebarToggle() {
+  // Clicking the backdrop closes the sidebar. Attached once on mount.
+  useEffect(() => {
+    const backdrop = document.getElementById("dashboard-backdrop");
+    const close = () => setOpen(false);
+    backdrop?.addEventListener("click", close);
+    return () => backdrop?.removeEventListener("click", close);
+  }, []);
+
   function toggle() {
-    document.getElementById("dashboard-sidebar")?.classList.toggle("-translate-x-full");
+    const sidebar = document.getElementById("dashboard-sidebar");
+    const isOpen = sidebar ? !sidebar.classList.contains("-translate-x-full") : false;
+    setOpen(!isOpen);
   }
 
   return (
@@ -17,4 +34,4 @@ export function MobileSidebarToggle() {
       </svg>
     </button>
   );
-}
+      }
