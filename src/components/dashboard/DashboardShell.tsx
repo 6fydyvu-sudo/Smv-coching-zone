@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
-import { MobileSidebarToggle } from "@/components/dashboard/MobileSidebarToggle";
 
 export interface NavItem {
   href: string;
@@ -25,64 +24,59 @@ export function DashboardShell({
 }) {
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sidebar: always fixed (both mobile and desktop). On mobile it's
-          translated off-screen by default and toggled via the hamburger
-          button; on desktop (lg:) it's permanently visible. Content below
-          reserves space for it at the SAME breakpoint (lg:pl-64), so the
-          two are always in sync and never overlap. */}
-      <aside
-        id="dashboard-sidebar"
-        className="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0"
-      >
-        <div className="flex h-16 shrink-0 items-center gap-2 border-b border-slate-200 px-5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
+      {/* Sidebar: ALWAYS visible, on every screen size — never hidden,
+          never toggled, never overlays content. On narrow (phone) screens
+          it's a compact icon-only rail (w-16); at the lg: breakpoint it
+          expands to show labels too (w-64). The content column below
+          reserves the exact matching width at each size (pl-16 / lg:pl-64),
+          so the two are always in sync and can never overlap or cover
+          each other. */}
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-16 flex-col border-r border-slate-200 bg-white lg:w-64">
+        <div className="flex h-16 shrink-0 items-center justify-center gap-2 border-b border-slate-200 px-2 lg:justify-start lg:px-5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
             SMV
           </span>
-          <span className="truncate text-sm font-semibold text-slate-900">{siteName}</span>
+          <span className="hidden truncate text-sm font-semibold text-slate-900 lg:inline">
+            {siteName}
+          </span>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+        <nav className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto p-2 lg:items-stretch lg:p-3">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-brand-50 hover:text-brand-700"
+                title={item.label}
+                className="flex items-center justify-center gap-3 rounded-lg px-0 py-2.5 text-sm font-medium text-slate-600 hover:bg-brand-50 hover:text-brand-700 lg:justify-start lg:px-3 lg:py-2"
               >
                 <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">{item.label}</span>
+                <span className="hidden truncate lg:inline">{item.label}</span>
               </Link>
             );
           })}
         </nav>
       </aside>
 
-      {/* Backdrop: only ever visible on mobile, only while the sidebar is
-          open (toggled together with it). Tapping it closes the sidebar. */}
-      <div
-        id="dashboard-backdrop"
-        className="fixed inset-0 z-30 hidden bg-slate-900/50 lg:hidden"
-      />
-
-      {/* Content column: lg:pl-64 permanently reserves the sidebar's width
-          on desktop, at the same breakpoint the sidebar becomes visible. */}
-      <div className="flex min-h-screen flex-col lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <MobileSidebarToggle />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{roleLabel}</p>
-              <p className="text-xs text-slate-400">{userName}</p>
-            </div>
+      {/* Content column: pl-16 (mobile) / lg:pl-64 (desktop) permanently
+          reserves the sidebar's current width at every screen size. */}
+      <div className="flex min-h-screen flex-col pl-16 lg:pl-64">
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{roleLabel}</p>
+            <p className="truncate text-xs text-slate-400">{userName}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm text-slate-500 hover:text-brand-600">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              className="hidden text-sm text-slate-500 hover:text-brand-600 sm:inline"
+            >
               View Website
             </Link>
             <SignOutButton />
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <main className="flex-1 p-3 sm:p-6">{children}</main>
       </div>
     </div>
   );
