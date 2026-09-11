@@ -39,4 +39,4 @@ export default async function TeacherLayout({ children }: { children: ReactNode 
       {children}
     </DashboardShell>
   );
-    }
+}
